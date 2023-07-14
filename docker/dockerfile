@@ -1,0 +1,7 @@
+FROM node:16-alpine
+
+WORKDIR /home
+
+RUN npm init -y
+
+RUN npm i localtunnel

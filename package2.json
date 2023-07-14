@@ -2,6 +2,7 @@
   "name": "aries-framework",
   "private": true,
   "license": "Apache-2.0",
+  "type": "module",
   "workspaces": [
     "packages/*",
     "demo",
@@ -24,7 +25,7 @@
     "lint": "eslint --ignore-path .gitignore .",
     "validate": "yarn lint && yarn check-types && yarn check-format",
     "run-mediator": "nodemon ./samples/mediator.ts",
-    "run-issuer": "ts-node ./samples/issuer.ts",
+    "run-issuer": "nodemon ./samples/issuer.js",
     "next-version-bump": "ts-node ./scripts/get-next-bump.ts"
   },
   "devDependencies": {

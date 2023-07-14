@@ -27,11 +27,11 @@ export class HttpInboundTransport implements InboundTransport {
     this.app.use((req, res, next) => {
       const contentType = req.headers['content-type']
 
-      if (!contentType || !supportedContentTypes.includes(contentType)) {
-        return res
-          .status(415)
-          .send('Unsupported content-type. Supported content-types are: ' + supportedContentTypes.join(', '))
-      }
+      // if (!contentType || !supportedContentTypes.includes(contentType)) {
+      //   return res
+      //     .status(415)
+      //     .send('Unsupported content-type. Supported content-types are: ' + supportedContentTypes.join(', '))
+      // }
 
       return next()
     })

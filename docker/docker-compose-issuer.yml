@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  issuer:
+    build: ..
+    image: aries-framework-javascript
+    container_name: afj-issuer
+    command: sh -c "echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf && npm run run-issuer"
+    # platform: linux/amd64
+    volumes:
+      - ../samples/issuer.ts:/www/samples/issuer.ts
+      - ../package.json:/www/package.json
+    networks:
+      - hyperledger
+    ports:
+      - 4001:4001
+      - 3006:3006
+
+networks:
+  hyperledger:
