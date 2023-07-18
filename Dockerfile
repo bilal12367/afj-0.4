@@ -60,3 +60,5 @@ RUN npm config rm https-proxy
 
 RUN yarn install
 RUN yarn build
+
+RUN npm install localtunnel

@@ -32,20 +32,23 @@ import {
   DidsModule,
   DidExchangeState,
   CredentialExchangeRecord,
+  TypedArrayEncoder,
+  KeyType,
 } from '@aries-framework/core'
 import { HttpInboundTransport, agentDependencies, WsInboundTransport } from '@aries-framework/node'
 import { AskarModule } from '@aries-framework/askar'
 import { askarModuleConfig } from 'packages/askar/tests/helpers'
-import { IndySdkModule } from '@aries-framework/indy-sdk'
-import { genesisTransactions, indySdk } from 'packages/core/tests'
+import { IndySdkAnonCredsRegistry, IndySdkIndyDidResolver, IndySdkModule, IndySdkSovDidResolver } from '@aries-framework/indy-sdk'
+
 import { AnonCredsRsModule } from '@aries-framework/anoncreds-rs'
 import { anoncreds } from 'packages/anoncreds-rs/tests/helpers'
 import { AnonCredsCredentialFormatService, AnonCredsModule, AnonCredsProofFormatService, GetSchemaReturn, LegacyIndyCredentialFormatService, LegacyIndyProofFormatService, V1CredentialProtocol, V1ProofProtocol } from '@aries-framework/anoncreds'
-import { IndyVdrAnonCredsRegistry, IndyVdrIndyDidRegistrar, IndyVdrIndyDidResolver, IndyVdrModule } from '@aries-framework/indy-vdr'
+import { IndyVdrAnonCredsRegistry, IndyVdrIndyDidRegistrar, IndyVdrIndyDidResolver, IndyVdrModule, IndyVdrSovDidResolver } from '@aries-framework/indy-vdr'
 import { CheqdAnonCredsRegistry, CheqdDidRegistrar, CheqdDidResolver, CheqdModule, CheqdModuleConfig } from '@aries-framework/cheqd'
 import { indyNetworkConfig } from 'demo/src/BaseAgent'
 import { indyVdr } from '@hyperledger/indy-vdr-nodejs';
 import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
+import * as indySdk from 'indy-sdk'
 
 const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 4001
 
@@ -54,9 +57,81 @@ const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 4001
 const app = express()
 const socketServer = new Server({ noServer: true })
 
-const endpoints = [`http://192.168.0.7:${port}`, `wss://192.168.0.7:${port}`]
+const endpoints = [`http://192.168.0.5:${port}`, `ws://192.168.0.5:${port}`]
 
 const logger = new TestLogger(LogLevel.info)
+
+
+const getLegacyIndySdkModules = (genesisTransaction: string) => {
+  const legacyIndyCredentialFormatService = new LegacyIndyCredentialFormatService()
+  const legacyIndyProofFormatService = new LegacyIndyProofFormatService()
+  return {
+    askar: new AskarModule({
+      ariesAskar
+    }),
+    anoncreds: new AnonCredsModule({
+      registries: [new IndyVdrAnonCredsRegistry(),new CheqdAnonCredsRegistry()],
+
+    }),
+    anoncredsRs: new AnonCredsRsModule({
+      anoncreds
+    }),
+    connections: new ConnectionsModule({
+      autoAcceptConnections: true,
+    }),
+    // cheqd: new CheqdModule(
+    //   new CheqdModuleConfig({
+    //     networks: [
+    //       {
+    //         network: 'bcovrin:test',
+    //         cosmosPayerSeed:
+    //           'robust across amount corn curve panther opera wish toe ring bleak empower wreck party abstract glad average muffin picnic jar squeeze annual long aunt',
+    //       },
+    //     ],
+    //   })
+    // ),
+    dids: new DidsModule({
+      resolvers: [new IndyVdrIndyDidResolver(),new IndySdkSovDidResolver(),new IndySdkIndyDidResolver(),new IndyVdrSovDidResolver()],
+      registrars: [new IndyVdrIndyDidRegistrar()],
+    }),
+    indyVdr: new IndyVdrModule({
+      indyVdr,
+      networks: [{
+        isProduction: true,
+        indyNamespace: 'bcovrin:test',
+        genesisTransactions: genesisTransaction,
+        connectOnStartup: true,
+      }],
+    }),
+    credentials: new CredentialsModule({
+      autoAcceptCredentials: AutoAcceptCredential.Always,
+      credentialProtocols: [
+        new V1CredentialProtocol({
+          indyCredentialFormat: legacyIndyCredentialFormatService,
+        }),
+        new V2CredentialProtocol({
+          credentialFormats: [legacyIndyCredentialFormatService, new AnonCredsCredentialFormatService()],
+        }),
+      ],
+    }),
+    
+  } as const
+}
+
+const createAndRegisterDidIndy = async(issuer: Agent) => {
+  const seed = TypedArrayEncoder.fromString('demoagentissuer00000000000000000')
+  const unDid = 'Sdhf7FUUBfyKiXYPKpdToo'
+  const indyDid = 'did:indy:bcovrin:test:'+unDid
+
+  await issuer.dids.import({
+    did: indyDid,
+    overwrite: true,
+    privateKeys: [{
+      privateKey: seed,
+      keyType: KeyType.Ed25519
+    }]
+  })
+}
 
 const getGenesisTransaction = async (url: string) => {
   const response = await fetch(url)
@@ -79,7 +154,7 @@ const getGenesisTransaction = async (url: string) => {
 
 const createNewInvitation = async (issuer: Agent) => {
   const outOfBandRecord = await issuer.oob.createInvitation();
-  let invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({ domain: 'http://192.168.0.7:4001/invitation' })
+  let invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({ domain: 'http://192.168.0.5:4001/invitation' })
   console.log("Creating New Invitation", invitationUrl)
   return {
     invitationUrl: invitationUrl,
@@ -105,7 +180,7 @@ const registerSchema = async (issuer: Agent) => {
   // return issuer.ledger.registerSchema({ attributes: ['name', 'age'], name: 'Schema6', version: '1.0' })
 }
 
-const createCredDef = async (schemaResult: any, agent: Agent,connectionId: string) => {
+const createCredDef = async (schemaResult: any, agent: Agent, connectionId: string) => {
   console.log('Schema Id: ', schemaResult.schemaState.schemaId)
   const credentialDefinitionResult = await agent.modules.anoncreds.registerCredentialDefinition({
     credentialDefinition: {
@@ -118,12 +193,12 @@ const createCredDef = async (schemaResult: any, agent: Agent,connectionId: strin
 
   if (credentialDefinitionResult.credentialDefinitionState.state === 'failed') {
     console.log(`Error creating credential definition: ${credentialDefinitionResult.credentialDefinitionState.reason}`)
-    
+
   } else {
     console.log("Credential Def result1234:", credentialDefinitionResult)
     const credDefId = credentialDefinitionResult.credentialDefinitionState.credentialDefinitionId
-    console.log({connectionId,schemaId: schemaResult.schemaState.schemaId, credDefId})
-    
+    console.log({ connectionId, schemaId: schemaResult.schemaState.schemaId, credDefId })
+
     // await agent.credentials.offerCredential({
     //   protocolVersion: 'v2',
     //   connectionId: connectionId,
@@ -137,7 +212,7 @@ const createCredDef = async (schemaResult: any, agent: Agent,connectionId: strin
     //     },
     //   },
     // })
-    
+
   }
 
   return ''
@@ -151,7 +226,7 @@ const setupConnectionListener = (
 
   console.log("Setting Connection Listener ", outOfBandRecord.id)
   issuer.events.on(ConnectionEventTypes.ConnectionStateChanged, async (e: any) => {
-    console.log("Connection Event: ", e)
+    console.log("Connection Event: ", e.payload.connectionRecord.state)
     if (e.payload.connectionRecord.outOfBandId !== outOfBandRecord.id) return
     if (e.payload.connectionRecord.state === DidExchangeState.Completed) {
       // the connection is now ready for usage in other protocols!
@@ -161,13 +236,15 @@ const setupConnectionListener = (
       // In this example we can send a basic message to the connection, but
       // anything is possible
       // await flow(payload.connectionRecord.id)
+      setTimeout(async () => {
+        await issuer.basicMessages.sendMessage(connectionId, 'This is hello from the issuer')
 
-      await issuer.basicMessages.sendMessage(connectionId,'This is hello from the issuer')
+      }, 10000);
       // const schemaResult = await registerSchema(issuer);
       // await createCredDef(schemaResult, issuer, connectionId) as string;
 
 
-     
+
 
     }
   })
@@ -183,31 +260,36 @@ const run = async () => {
       key: 'demoagentissuer00000000000000000',
     },
     logger,
+    
   }
-  const genesisTransaction: string = await getGenesisTransaction('http://192.168.0.7:9000/genesis')
-  console.log('genesisTransaction', genesisTransaction)
-  // Set up agent
 
-  const agent = new Agent({
+  const genesisTransaction: string = await getGenesisTransaction('http://192.168.0.5:9000/genesis')
+  // Set up agent
+  // genesisTransaction.replaceAll('192.168.0.5','127.0.0.1')
+  console.log('genesisTransaction', genesisTransaction)
+  const agent: Agent = new Agent({
     config: agentConfig,
     dependencies: agentDependencies,
-    modules: getAskarAnonCredsIndyModules(genesisTransaction)
+    modules: getLegacyIndySdkModules(genesisTransaction),
+    
   })
   const config = agent.config
 
   // Create all transports
   const httpInboundTransport = new HttpInboundTransport({ app, port })
   const httpOutboundTransport = new HttpOutboundTransport()
-  // const wsInboundTransport = new WsInboundTransport({ server: socketServer })
+  const wsInboundTransport = new WsInboundTransport({ server: socketServer })
   const wsOutboundTransport = new WsOutboundTransport()
 
   // Register all Transports
   agent.registerInboundTransport(httpInboundTransport)
   agent.registerOutboundTransport(httpOutboundTransport)
-  // agent.registerInboundTransport(wsInboundTransport)
+  agent.registerInboundTransport(wsInboundTransport)
   agent.registerOutboundTransport(wsOutboundTransport)
 
   await agent.initialize()
+
+  await createAndRegisterDidIndy(agent)
 
   httpInboundTransport.app.get('/invitation', async (req, res) => {
     const resp = await createNewInvitation(agent)
@@ -238,69 +320,3 @@ const run = async () => {
 
 void run()
 
-
-function getAskarAnonCredsIndyModules(genesisTransaction: string) {
-  const legacyIndyCredentialFormatService = new LegacyIndyCredentialFormatService()
-  const legacyIndyProofFormatService = new LegacyIndyProofFormatService()
-
-  return {
-    connections: new ConnectionsModule({
-      autoAcceptConnections: true,
-    }),
-    credentials: new CredentialsModule({
-      autoAcceptCredentials: AutoAcceptCredential.ContentApproved,
-      credentialProtocols: [
-        new V1CredentialProtocol({
-          indyCredentialFormat: legacyIndyCredentialFormatService,
-        }),
-        new V2CredentialProtocol({
-          credentialFormats: [legacyIndyCredentialFormatService, new AnonCredsCredentialFormatService()],
-        }),
-      ],
-    }),
-    proofs: new ProofsModule({
-      autoAcceptProofs: AutoAcceptProof.ContentApproved,
-      proofProtocols: [
-        new V1ProofProtocol({
-          indyProofFormat: legacyIndyProofFormatService,
-        }),
-        new V2ProofProtocol({
-          proofFormats: [legacyIndyProofFormatService, new AnonCredsProofFormatService()],
-        }),
-      ],
-    }),
-    anoncreds: new AnonCredsModule({
-      registries: [new IndyVdrAnonCredsRegistry(), new CheqdAnonCredsRegistry()],
-    }),
-    anoncredsRs: new AnonCredsRsModule({
-      anoncreds,
-    }),
-    indyVdr: new IndyVdrModule({
-      indyVdr,
-      networks: [{
-        isProduction: false,
-        indyNamespace: 'bcovrin:test',
-        genesisTransactions: genesisTransactions,
-        connectOnStartup: true,
-      },],
-    }),
-    cheqd: new CheqdModule(
-      new CheqdModuleConfig({
-        networks: [
-          {
-            network: 'testnet',
-            cosmosPayerSeed:
-              'robust across amount corn curve panther opera wish toe ring bleak empower wreck party abstract glad average muffin picnic jar squeeze annual long aunt',
-          },
-        ],
-      })
-    ),
-    dids: new DidsModule({
-      resolvers: [new IndyVdrIndyDidResolver(), new CheqdDidResolver()],
-      registrars: [new CheqdDidRegistrar()],
-    }),
-    askar: new AskarModule({
-      ariesAskar,
-    }),
-  } as const
-}

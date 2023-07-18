@@ -206,7 +206,7 @@ function getLegacyIndySdkModules() {
       networks: [indyNetworkConfig],
     }),
     dids: new DidsModule({
-      resolvers: [new IndySdkSovDidResolver()],
+      resolvers: [new IndyVdrIndyDidResolver()],
     }),
   } as const
 }

@@ -23,8 +23,9 @@
     "test": "jest",
     "lint": "eslint --ignore-path .gitignore .",
     "validate": "yarn lint && yarn check-types && yarn check-format",
-    "run-mediator": "nodemon ./samples/mediator.ts",
+    "run-mediator": "ts-node ./samples/mediator.ts",
     "run-issuer": "ts-node ./samples/issuer.ts",
+    "run-demo": "ts-node ./samples/demo.ts",
     "next-version-bump": "ts-node ./scripts/get-next-bump.ts"
   },
   "devDependencies": {

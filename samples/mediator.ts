@@ -4,7 +4,7 @@
  * incoming mediation requests.
  *
  * You can get an invitation by going to '/invitation', which by default is
- * http://localhost:3001/invitation
+ * http://192.168.0.5:3001/invitation
  *
  * To connect to the mediator from another agent, you can set the
  * 'mediatorConnectionsInvite' parameter in the agent config to the
@@ -37,7 +37,7 @@ import { AskarModule } from '@aries-framework/askar'
 import { askarModuleConfig } from 'packages/askar/tests/helpers'
 import { IndySdkModule } from '@aries-framework/indy-sdk'
 import { indySdk } from 'packages/core/tests'
-
+import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
 const port = 6001
 
 // We create our own instance of express here. This is not required
@@ -45,7 +45,7 @@ const port = 6001
 const app = express()
 const socketServer = new Server({ noServer: true })
 
-const endpoints =  [`http://192.168.0.7:${port}`, `wss://192.168.0.7:${port}`]
+const endpoints = [`http://192.168.0.5:${port}`, `ws://192.168.0.5:${port}`]
 
 const logger = new TestLogger(LogLevel.info)
 
@@ -60,13 +60,15 @@ const run = async () => {
     },
     logger,
   }
-  
+
   // Set up agent
   const agent = new Agent({
     config: agentConfig,
     dependencies: agentDependencies,
     modules: {
-      indySdk: new IndySdkModule({ indySdk }),
+      indySdk: new IndySdkModule({
+        indySdk
+      }),
       mediator: new MediatorModule({
         autoAcceptMediationRequests: true,
       }),
@@ -76,19 +78,19 @@ const run = async () => {
     },
   })
   const config = agent.config
-  
+
   // Create all transports
   const httpInboundTransport = new HttpInboundTransport({ app, port })
   const httpOutboundTransport = new HttpOutboundTransport()
   const wsInboundTransport = new WsInboundTransport({ server: socketServer })
   const wsOutboundTransport = new WsOutboundTransport()
-  
+
   // Register all Transports
   agent.registerInboundTransport(httpInboundTransport)
   agent.registerOutboundTransport(httpOutboundTransport)
   agent.registerInboundTransport(wsInboundTransport)
   agent.registerOutboundTransport(wsOutboundTransport)
-  
+
   // Allow to create invitation, no other way to ask for invitation yet
   httpInboundTransport.app.get('/invitation', async (req, res) => {
     if (typeof req.query.c_i === 'string') {
@@ -96,11 +98,12 @@ const run = async () => {
       res.send(invitation.toJSON())
     } else {
       const { outOfBandInvitation } = await agent.oob.createInvitation()
-      res.send(outOfBandInvitation.toUrl({ domain: 'http://192.168.0.7:6001/invitation'}))
+      const httpEndpoint = config.endpoints.find((e) => e.startsWith('http'))
+      res.send(outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' }))
     }
   })
   await agent.initialize()
-  
+
 
   // When an 'upgrade' to WS is made on our http server, we forward the
   // request to the WS server
