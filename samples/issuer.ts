@@ -114,17 +114,14 @@ const getLegacyIndySdkModules = (genesisTransaction: string) => {
         }),
       ],
     }),
-    // credentials: new CredentialsModule({
-    //   autoAcceptCredentials: AutoAcceptCredential.Always,
-    //   credentialProtocols: [
-    //     new V1CredentialProtocol({
-    //       indyCredentialFormat: legacyIndyCredentialFormatService,
-    //     }),
-    //     new V2CredentialProtocol({
-    //       credentialFormats: [legacyIndyCredentialFormatService, new AnonCredsCredentialFormatService()],
-    //     }),
-    //   ],
-    // }),
+    proofs: new ProofsModule({
+      autoAcceptProofs: AutoAcceptProof.Always,
+      proofProtocols: [
+        new V2ProofProtocol({
+          proofFormats: [new LegacyIndyProofFormatService(), new AnonCredsProofFormatService()]
+        })
+      ]
+    })
 
   } as const
 }
@@ -275,7 +272,7 @@ const setupConnectionListener = (
       const schemaId = 'did:indy:bcovrin:Sdhf7FUUBfyKiXYPKpdToo/anoncreds/v0/SCHEMA/Example Schema to register/1.0.0'
 
       const credentialDefinitionId = 'did:indy:bcovrin:Sdhf7FUUBfyKiXYPKpdToo/anoncreds/v0/CLAIM_DEF/7/My Organization'
-      
+
       const anonCredsCredentialExchangeRecord = await issuer.credentials.offerCredential({
         protocolVersion: 'v2' as never,
         connectionId: connectionId,
@@ -322,8 +319,46 @@ const setupConnectionListener = (
     }
   })
 
-  issuer.events.on(CredentialEventTypes.CredentialStateChanged, async(e: any) => {
+  issuer.events.on(CredentialEventTypes.CredentialStateChanged, async (e: any) => {
     console.log("Credential State Changed: ", e);
+    if (e.payload.credentialRecord.state === CredentialState.Done) {
+      const connectionId = e.payload.credentialRecord.connectionId;
+      const credentialId = e.payload.credentialRecord.id;
+      const credentialDefinitionId = 'did:indy:bcovrin:Sdhf7FUUBfyKiXYPKpdToo/anoncreds/v0/CLAIM_DEF/7/My Organization'
+      const proofAttribute = {
+        name: {
+          name: 'name',
+          restrictions: [
+            {
+              cred_def_id: credentialDefinitionId,
+            },
+          ],
+        },
+      }
+      console.log("Sending Proof Request: ", { connectionId, credentialId, credentialDefinitionId })
+      await issuer.proofs.requestProof({
+        protocolVersion: 'v2',
+        connectionId: connectionId,
+        proofFormats: {
+          anoncreds: {
+            name: 'proof-request',
+            version: '1.0',
+            requested_attributes: proofAttribute,
+          },
+        },
+      })
+      // await issuer.proofs.proposeProof({
+      //   connectionId: connectionId,
+      //   protocolVersion: 'v2' as never,
+      //   proofFormats: {
+
+      //     indy: {
+      //       attributes: [{ name: 'key', value: 'value' }],
+      //     },
+      //   },
+      //   comment: 'Propose proof comment',
+      // })
+    }
   })
 }
 const run = async () => {
