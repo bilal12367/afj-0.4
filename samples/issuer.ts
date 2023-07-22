@@ -4,7 +4,7 @@
 
 
 
-import type { CredentialState, InitConfig, OutOfBandRecord } from '@aries-framework/core'
+import { CredentialEventTypes, CredentialState, DidsModuleConfig, InitConfig, KeyDidRegistrar, KeyDidResolver, OutOfBandRecord, PeerDidRegistrar, PeerDidResolver, Protocol } from '@aries-framework/core'
 import type { Socket } from 'net'
 
 import express from 'express'
@@ -38,7 +38,7 @@ import {
 import { HttpInboundTransport, agentDependencies, WsInboundTransport } from '@aries-framework/node'
 import { AskarModule } from '@aries-framework/askar'
 import { askarModuleConfig } from 'packages/askar/tests/helpers'
-import { IndySdkAnonCredsRegistry, IndySdkIndyDidResolver, IndySdkModule, IndySdkSovDidResolver } from '@aries-framework/indy-sdk'
+import { IndySdkAnonCredsRegistry, IndySdkIndyDidRegistrar, IndySdkIndyDidResolver, IndySdkModule, IndySdkSovDidResolver } from '@aries-framework/indy-sdk'
 
 import { AnonCredsRsModule } from '@aries-framework/anoncreds-rs'
 import { anoncreds } from 'packages/anoncreds-rs/tests/helpers'
@@ -48,9 +48,9 @@ import { CheqdAnonCredsRegistry, CheqdDidRegistrar, CheqdDidResolver, CheqdModul
 import { indyNetworkConfig } from 'demo/src/BaseAgent'
 import { indyVdr } from '@hyperledger/indy-vdr-nodejs';
 import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
-import * as indySdk from 'indy-sdk'
+import indySdk from 'indy-sdk'
 
-const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 4001
+const port = 4006
 
 // We create our own instance of express here. This is not required
 // but allows use to use the same server (and port) for both WebSockets and HTTP
@@ -66,11 +66,11 @@ const getLegacyIndySdkModules = (genesisTransaction: string) => {
   const legacyIndyCredentialFormatService = new LegacyIndyCredentialFormatService()
   const legacyIndyProofFormatService = new LegacyIndyProofFormatService()
   return {
-    askar: new AskarModule({
-      ariesAskar
+    ariesAskar: new AskarModule({
+      ariesAskar,
     }),
     anoncreds: new AnonCredsModule({
-      registries: [new IndyVdrAnonCredsRegistry(),new CheqdAnonCredsRegistry()],
+      registries: [new IndyVdrAnonCredsRegistry()],
 
     }),
     anoncredsRs: new AnonCredsRsModule({
@@ -78,27 +78,30 @@ const getLegacyIndySdkModules = (genesisTransaction: string) => {
     }),
     connections: new ConnectionsModule({
       autoAcceptConnections: true,
+
     }),
-    // cheqd: new CheqdModule(
-    //   new CheqdModuleConfig({
-    //     networks: [
-    //       {
-    //         network: 'bcovrin:test',
-    //         cosmosPayerSeed:
-    //           'robust across amount corn curve panther opera wish toe ring bleak empower wreck party abstract glad average muffin picnic jar squeeze annual long aunt',
-    //       },
-    //     ],
-    //   })
-    // ),
     dids: new DidsModule({
-      resolvers: [new IndyVdrIndyDidResolver(),new IndySdkSovDidResolver(),new IndySdkIndyDidResolver(),new IndyVdrSovDidResolver()],
-      registrars: [new IndyVdrIndyDidRegistrar()],
+      resolvers: [new KeyDidResolver(), new PeerDidResolver(), new IndyVdrIndyDidResolver()],
+      registrars: [new KeyDidRegistrar(), new PeerDidRegistrar(), new IndyVdrIndyDidRegistrar()],
+
     }),
+
+    // indySdk: new IndySdkModule({
+    //   indySdk,
+    //   networks: [{
+    //     isProduction: false,
+    //     // indyNamespace: 'bcovrin:test::test:test',
+    //     indyNamespace: 'bcovrin',
+    //     genesisTransactions: genesisTransaction,
+    //     connectOnStartup: true,
+
+    //   }],
+    // }),
     indyVdr: new IndyVdrModule({
       indyVdr,
       networks: [{
-        isProduction: true,
-        indyNamespace: 'bcovrin:test',
+        isProduction: false,
+        indyNamespace: 'bcovrin',
         genesisTransactions: genesisTransaction,
         connectOnStartup: true,
       }],
@@ -106,22 +109,30 @@ const getLegacyIndySdkModules = (genesisTransaction: string) => {
     credentials: new CredentialsModule({
       autoAcceptCredentials: AutoAcceptCredential.Always,
       credentialProtocols: [
-        new V1CredentialProtocol({
-          indyCredentialFormat: legacyIndyCredentialFormatService,
-        }),
         new V2CredentialProtocol({
-          credentialFormats: [legacyIndyCredentialFormatService, new AnonCredsCredentialFormatService()],
+          credentialFormats: [new LegacyIndyCredentialFormatService(), new AnonCredsCredentialFormatService()],
         }),
       ],
     }),
-    
+    // credentials: new CredentialsModule({
+    //   autoAcceptCredentials: AutoAcceptCredential.Always,
+    //   credentialProtocols: [
+    //     new V1CredentialProtocol({
+    //       indyCredentialFormat: legacyIndyCredentialFormatService,
+    //     }),
+    //     new V2CredentialProtocol({
+    //       credentialFormats: [legacyIndyCredentialFormatService, new AnonCredsCredentialFormatService()],
+    //     }),
+    //   ],
+    // }),
+
   } as const
 }
 
-const createAndRegisterDidIndy = async(issuer: Agent) => {
+const createAndRegisterDidIndy = async (issuer: Agent) => {
   const seed = TypedArrayEncoder.fromString('demoagentissuer00000000000000000')
   const unDid = 'Sdhf7FUUBfyKiXYPKpdToo'
-  const indyDid = 'did:indy:bcovrin:test:'+unDid
+  const indyDid = 'did:indy:bcovrin:' + unDid
 
   await issuer.dids.import({
     did: indyDid,
@@ -152,13 +163,28 @@ const getGenesisTransaction = async (url: string) => {
 //   }
 // })
 
-const createNewInvitation = async (issuer: Agent) => {
-  const outOfBandRecord = await issuer.oob.createInvitation();
-  let invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({ domain: 'http://192.168.0.5:4001/invitation' })
-  console.log("Creating New Invitation", invitationUrl)
-  return {
-    invitationUrl: invitationUrl,
-    outOfBandRecord,
+const createNewInvitation = async (issuer: Agent, req: any, res: any) => {
+  // const outOfBandRecord = await issuer.oob.createInvitation();
+  // let invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({ domain: 'http://192.168.0.5:4001/invitation' })
+  // console.log("Creating New Invitation", invitationUrl)
+  let invitationUrl: any;
+  if (typeof req.query.c_i === 'string') {
+    const invitation = ConnectionInvitationMessage.fromUrl(req.url)
+    invitationUrl = invitation;
+    res.send(invitation.toJSON())
+    return {
+      invitationUrl: invitationUrl,
+      outOfBandRecord: {}
+    }
+  } else {
+    const outOfBandRecord = await issuer.oob.createInvitation()
+    const httpEndpoint = endpoints.find((e) => e.startsWith('http'))
+    invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' })
+    res.send(invitationUrl)
+    return {
+      invitationUrl: invitationUrl,
+      outOfBandRecord,
+    }
   }
 }
 const registerSchema = async (issuer: Agent) => {
@@ -220,26 +246,73 @@ const createCredDef = async (schemaResult: any, agent: Agent, connectionId: stri
 
 const setupConnectionListener = (
   issuer: Agent,
+  // outOfBandRecord: OutOfBandRecord,
   outOfBandRecord: OutOfBandRecord,
-  flow: string
 ) => {
 
-  console.log("Setting Connection Listener ", outOfBandRecord.id)
+  console.log("Setting Connection Listener ", outOfBandRecord)
   issuer.events.on(ConnectionEventTypes.ConnectionStateChanged, async (e: any) => {
     console.log("Connection Event: ", e.payload.connectionRecord.state)
     if (e.payload.connectionRecord.outOfBandId !== outOfBandRecord.id) return
     if (e.payload.connectionRecord.state === DidExchangeState.Completed) {
       // the connection is now ready for usage in other protocols!
-      console.log(`Connection for out-of-band id ${outOfBandRecord.id} completed`)
-      const connectionId = outOfBandRecord.id;
       // Custom business logic can be included here
       // In this example we can send a basic message to the connection, but
       // anything is possible
       // await flow(payload.connectionRecord.id)
-      setTimeout(async () => {
-        await issuer.basicMessages.sendMessage(connectionId, 'This is hello from the issuer')
+      console.log(`Connection for out-of-band id ${outOfBandRecord.id} completed`)
+      console.log("Connection Record: ", e.payload.connectionRecord.id)
 
-      }, 10000);
+      // setTimeout(async () => {
+      //   console.log(`Connection for out-of-band id ${outOfBandRecord.id} completed`)
+      //   const connectionId = e.payload.connectionRecord.id;
+      //   await issuer.basicMessages.sendMessage(connectionId, 'This is hello from the issuer')
+
+      // }, 3000);
+      const unDid = 'Sdhf7FUUBfyKiXYPKpdToo'
+      const indyDid = 'did:indy:bcovrin:' + unDid
+      const connectionId = e.payload.connectionRecord.id;
+      const schemaId = 'did:indy:bcovrin:Sdhf7FUUBfyKiXYPKpdToo/anoncreds/v0/SCHEMA/Example Schema to register/1.0.0'
+
+      const credentialDefinitionId = 'did:indy:bcovrin:Sdhf7FUUBfyKiXYPKpdToo/anoncreds/v0/CLAIM_DEF/7/My Organization'
+      
+      const anonCredsCredentialExchangeRecord = await issuer.credentials.offerCredential({
+        protocolVersion: 'v2' as never,
+        connectionId: connectionId,
+        credentialFormats: {
+          anoncreds: {
+            credentialDefinitionId: credentialDefinitionId,
+            attributes: [
+              { name: 'name', value: 'Bilal' },
+            ],
+          },
+        },
+      })
+      console.log('anonCredsCredentialExchangeRecord:  ', anonCredsCredentialExchangeRecord)
+      // const credentialDefinitionResult = await issuer.modules.anoncreds.registerCredentialDefinition({
+      //   credentialDefinition: {
+      //     tag: 'My Organization',
+      //     issuerId: indyDid,
+      //     schemaId: schemaId,
+      //   },
+      //   options: {},
+      // })
+
+      // console.log('credentialDefinitionResult1234: ', credentialDefinitionResult)
+      // try {
+      //   const schemaResult = await issuer.modules.anoncreds.registerSchema({
+      //     schema: {
+      //       attrNames: ['name'],
+      //       issuerId: indyDid,
+      //       name: 'Example Schema to register',
+      //       version: '1.0.0',
+      //     },
+      //     options: {},
+      //   })
+      //   console.log('schemaResult1234:', schemaResult)
+      // } catch (error) {
+      //   console.log("Schema Error: ",error)
+      // }
       // const schemaResult = await registerSchema(issuer);
       // await createCredDef(schemaResult, issuer, connectionId) as string;
 
@@ -247,6 +320,10 @@ const setupConnectionListener = (
 
 
     }
+  })
+
+  issuer.events.on(CredentialEventTypes.CredentialStateChanged, async(e: any) => {
+    console.log("Credential State Changed: ", e);
   })
 }
 const run = async () => {
@@ -260,10 +337,12 @@ const run = async () => {
       key: 'demoagentissuer00000000000000000',
     },
     logger,
-    
+    useDidSovPrefixWhereAllowed: true,
+    autoUpdateStorageOnStartup: true
   }
 
   const genesisTransaction: string = await getGenesisTransaction('http://192.168.0.5:9000/genesis')
+  // const genesisTransaction: string = await getGenesisTransaction('http://13.235.107.142:9000/genesis')
   // Set up agent
   // genesisTransaction.replaceAll('192.168.0.5','127.0.0.1')
   console.log('genesisTransaction', genesisTransaction)
@@ -271,7 +350,7 @@ const run = async () => {
     config: agentConfig,
     dependencies: agentDependencies,
     modules: getLegacyIndySdkModules(genesisTransaction),
-    
+
   })
   const config = agent.config
 
@@ -292,22 +371,26 @@ const run = async () => {
   await createAndRegisterDidIndy(agent)
 
   httpInboundTransport.app.get('/invitation', async (req, res) => {
-    const resp = await createNewInvitation(agent)
+    const resp = await createNewInvitation(agent, req, res)
     console.log("Invitation URL: ", resp.invitationUrl)
-    setupConnectionListener(agent, resp.outOfBandRecord, 'flow()')
-    res.send(resp.invitationUrl)
+    setupConnectionListener(agent, resp.outOfBandRecord as OutOfBandRecord)
+    // let oob : OutOfBandRecord = resp.outOfBandRecord as OutOfBandRecord;  
+    // await agent.connections.returnWhenIsConnected(oob.id,{timeoutMs: 10000})
+    // console.log("Connected id: ", oob.id)
+
+    // res.send(resp.invitationUrl)
   })
 
-  app.get('/invitation', async (req, res) => {
-    const resp = await createNewInvitation(agent)
-    console.log("Invitation URL: ", resp.invitationUrl)
-    setupConnectionListener(agent, resp.outOfBandRecord, 'flow()')
-    res.send(resp.invitationUrl)
-  })
+  // app.get('/invitation', async (req, res) => {
+  //   const resp = await createNewInvitation(agent,req,res)
+  //   console.log("Invitation URL: ", resp.invitationUrl)
+  //   setupConnectionListener(agent, resp.outOfBandRecord)
+  //   // res.send(resp.invitationUrl)
+  // })
 
-  app.listen(3006, () => {
-    console.log("Server started listening at 3006...")
-  })
+  // app.listen(3006, () => {
+  //   console.log("Server started listening at 3006...")
+  // })
 
   // When an 'upgrade' to WS is made on our http server, we forward the
   // request to the WS server
@@ -319,4 +402,5 @@ const run = async () => {
 }
 
 void run()
+
 

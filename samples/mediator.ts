@@ -66,8 +66,8 @@ const run = async () => {
     config: agentConfig,
     dependencies: agentDependencies,
     modules: {
-      indySdk: new IndySdkModule({
-        indySdk
+      ariesAskar: new AskarModule({
+        ariesAskar
       }),
       mediator: new MediatorModule({
         autoAcceptMediationRequests: true,

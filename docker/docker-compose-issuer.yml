@@ -9,12 +9,11 @@ services:
     # platform: linux/amd64
     volumes:
       - ../samples/issuer.ts:/www/samples/issuer.ts
-      - ../package.json:/www/package.json
+      # - ../package.json:/www/package.json
     networks:
       - hyperledger
     ports:
-      - 4001:4001
-      - 3006:3006
+      - 4006:4006
     extra_hosts:
       - "docker.host.internal:192.168.0.5"
 

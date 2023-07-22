@@ -33,7 +33,7 @@ import {
   HttpOutboundTransport,
 } from '@aries-framework/core'
 import { IndySdkAnonCredsRegistry, IndySdkModule, IndySdkSovDidResolver } from '@aries-framework/indy-sdk'
-import { IndyVdrIndyDidResolver, IndyVdrAnonCredsRegistry, IndyVdrModule } from '@aries-framework/indy-vdr'
+import { IndyVdrIndyDidResolver, IndyVdrAnonCredsRegistry, IndyVdrModule, IndyVdrSovDidResolver } from '@aries-framework/indy-vdr'
 import { agentDependencies, HttpInboundTransport } from '@aries-framework/node'
 import { anoncreds } from '@hyperledger/anoncreds-nodejs'
 import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
@@ -110,7 +110,7 @@ export class BaseAgent {
 function getAskarAnonCredsIndyModules() {
   const legacyIndyCredentialFormatService = new LegacyIndyCredentialFormatService()
   const legacyIndyProofFormatService = new LegacyIndyProofFormatService()
-
+  
   return {
     connections: new ConnectionsModule({
       autoAcceptConnections: true,
@@ -147,20 +147,8 @@ function getAskarAnonCredsIndyModules() {
       indyVdr,
       networks: [indyNetworkConfig],
     }),
-    cheqd: new CheqdModule(
-      new CheqdModuleConfig({
-        networks: [
-          {
-            network: 'testnet',
-            cosmosPayerSeed:
-              'robust across amount corn curve panther opera wish toe ring bleak empower wreck party abstract glad average muffin picnic jar squeeze annual long aunt',
-          },
-        ],
-      })
-    ),
     dids: new DidsModule({
-      resolvers: [new IndyVdrIndyDidResolver(), new CheqdDidResolver()],
-      registrars: [new CheqdDidRegistrar()],
+      resolvers: [new IndyVdrSovDidResolver()],
     }),
     askar: new AskarModule({
       ariesAskar,

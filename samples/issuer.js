@@ -8,7 +8,7 @@
 import express from 'express'
 import { Server } from 'ws'
 
-import { TestLogger } from '../packages/core/tests/logger'
+// import { TestLogger } from '../packages/core/tests/logger'
 
 import {
   ConnectionsModule,
@@ -54,7 +54,7 @@ const socketServer = new Server({ noServer: true })
 
 const endpoints = [`http://192.168.0.7:${port}`, `wss://192.168.0.7:${port}`]
 
-const logger = new TestLogger(LogLevel.info)
+const logger = new ConsoleLogger(LogLevel.info)
 
 const getGenesisTransaction = async (url) => {
   const response = await fetch(url)
