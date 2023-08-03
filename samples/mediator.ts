@@ -45,7 +45,7 @@ const port = 6001
 const app = express()
 const socketServer = new Server({ noServer: true })
 
-const endpoints = [`http://192.168.0.5:${port}`, `ws://192.168.0.5:${port}`]
+const endpoints = [`http://192.168.0.7:${port}`, `ws://192.168.0.7:${port}`]
 
 const logger = new TestLogger(LogLevel.info)
 
@@ -97,7 +97,7 @@ const run = async () => {
       const invitation = ConnectionInvitationMessage.fromUrl(req.url)
       res.send(invitation.toJSON())
     } else {
-      const { outOfBandInvitation } = await agent.oob.createInvitation()
+      const { outOfBandInvitation } = await agent.oob.createInvitation({multiUseInvitation: true})
       const httpEndpoint = config.endpoints.find((e) => e.startsWith('http'))
       res.send(outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' }))
     }
